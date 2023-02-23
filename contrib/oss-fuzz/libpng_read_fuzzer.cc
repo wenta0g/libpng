@@ -186,6 +186,40 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   png_set_scale_16(png_handler.png_ptr);
   png_set_tRNS_to_alpha(png_handler.png_ptr);
 
+    // Add new transformation
+  
+  // rgb to gray (done)
+  // red and green coefficient, use the default built in coefficients
+  // error action between 1 to 3
+  double red_to_set = 6968 / 32768.;
+  double green_to_set = 23434 / 32768.;
+  png_set_rgb_to_gray(png_handler.png_ptr, 1, red_to_set,green_to_set);
+
+  // filler (done)
+  // the second argument is a filler color, u_int_32
+  // the third argument is either 0 or 1
+ 
+  png_set_filler(png_handler.png_ptr, 0xffff, PNG_FILLER_AFTER);
+
+  // set alpha mode and set background conflicts with each other. 
+
+  // set alpha mode, trigger different mode (STANDARD, OPTIMIZED, BROKEN), and the compose transformation
+  // png_set_alpha_mode();
+  
+  // set background color, in the meantime, it calles the compose tranformation
+  png_color_16 back;
+  // use a default value
+  png_uint_16 default_red = 6968;
+  png_uint_16 default_green = 23434;
+  png_uint_16 default_blue = 2366;
+
+  back.red = default_red;
+  back.green = default_green;
+  back.blue = default_blue;
+  //back.gray = (png_uint_16)data.red;
+
+  png_set_background(png_handler.png_ptr, &back, PNG_BACKGROUND_GAMMA_FILE, 1, 1.0);
+  
   int passes = png_set_interlace_handling(png_handler.png_ptr);
 
   png_read_update_info(png_handler.png_ptr, png_handler.info_ptr);
