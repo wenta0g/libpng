@@ -153,6 +153,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     return 0;
   }
 
+  png_set_keep_unknown_chunks(png_handler.png_ptr, PNG_HANDLE_CHUNK_ALWAYS, NULL,0);
+  
   // Reading.
   png_read_info(png_handler.png_ptr, png_handler.info_ptr);
 
