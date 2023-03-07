@@ -47,25 +47,55 @@ struct BufState {
   size_t bytes_left;
 };
 
-struct PngObjectHandler {
-  png_infop info_ptr = nullptr;
-  png_structp png_ptr = nullptr;
-  png_infop end_info_ptr = nullptr;
-  png_voidp row_ptr = nullptr;
-  BufState* buf_state = nullptr;
+/* THE Image STRUCTURE */
+/* The super-class of a png_image, contains the decoded image plus the input
+ * data necessary to re-read the file with a different format.
+ */
+typedef struct
+{
+   png_image   image;
+   png_uint_32 opts;
+   png_voidp   input_memory;
+   size_t      input_memory_size;
+   png_bytep   buffer;
+   size_t      bufsize;
+   size_t      allocsize;
+   char        tmpfile_name[32];
+   png_uint_16 colormap[256*4];
+}
+Image;
 
-  ~PngObjectHandler() {
-    if (row_ptr)
-      png_free(png_ptr, row_ptr);
-    if (end_info_ptr)
-      png_destroy_read_struct(&png_ptr, &info_ptr, &end_info_ptr);
-    else if (info_ptr)
-      png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-    else
-      png_destroy_read_struct(&png_ptr, nullptr, nullptr);
-    delete buf_state;
-  }
-};
+
+
+/* Initializer: also sets the permitted error limit for 16-bit operations. */
+static void
+newimage(Image *image)
+{
+   memset(image, 0, sizeof *image);
+}
+
+
+/* Delete function; cleans out all the allocated data and the temporary file in
+ * the image.
+ */
+static void
+freeimage(Image *image)
+{
+   //freebuffer(image);
+   png_image_free(&image->image);
+   //free(image->buffer);
+   //image->buffer = NULL;
+   if (image->input_memory != NULL)
+   {
+      free(image->input_memory);
+      image->input_memory = NULL;
+      image->input_memory_size = 0;
+   }
+
+}
+
+
+
 
 void user_read_data(png_structp png_ptr, png_bytep data, size_t length) {
   BufState* buf_state = static_cast<BufState*>(png_get_io_ptr(png_ptr));
@@ -108,138 +138,56 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     // not a PNG.
     return 0;
   }
+  Image image;
 
-  PngObjectHandler png_handler;
-  png_handler.png_ptr = nullptr;
-  png_handler.row_ptr = nullptr;
-  png_handler.info_ptr = nullptr;
-  png_handler.end_info_ptr = nullptr;
-
-  png_handler.png_ptr = png_create_read_struct
-    (PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  if (!png_handler.png_ptr) {
-    return 0;
-  }
-
-  png_handler.info_ptr = png_create_info_struct(png_handler.png_ptr);
-  if (!png_handler.info_ptr) {
-    PNG_CLEANUP
-    return 0;
-  }
-
-  png_handler.end_info_ptr = png_create_info_struct(png_handler.png_ptr);
-  if (!png_handler.end_info_ptr) {
-    PNG_CLEANUP
-    return 0;
-  }
-
-  // Use a custom allocator that fails for large allocations to avoid OOM.
-  png_set_mem_fn(png_handler.png_ptr, nullptr, limited_malloc, default_free);
-
-  png_set_crc_action(png_handler.png_ptr, PNG_CRC_QUIET_USE, PNG_CRC_QUIET_USE);
-#ifdef PNG_IGNORE_ADLER32
-  png_set_option(png_handler.png_ptr, PNG_IGNORE_ADLER32, PNG_OPTION_ON);
-#endif
+  //png_bytep b = data;
+  png_bytep b;
+  //image.input_memory = data;
+  image.input_memory_size = size;
 
   // Setting up reading from buffer.
-  png_handler.buf_state = new BufState();
-  png_handler.buf_state->data = data + kPngHeaderSize;
-  png_handler.buf_state->bytes_left = size - kPngHeaderSize;
-  png_set_read_fn(png_handler.png_ptr, png_handler.buf_state, user_read_data);
-  png_set_sig_bytes(png_handler.png_ptr, kPngHeaderSize);
-
-  if (setjmp(png_jmpbuf(png_handler.png_ptr))) {
-    PNG_CLEANUP
-    return 0;
-  }
-
-  png_set_keep_unknown_chunks(png_handler.png_ptr, PNG_HANDLE_CHUNK_ALWAYS, NULL,0);
+  memcpy(b, data, size);
+  image.input_memory = b;
+  //imge.input_memory = data + kPngHeaderSize;
+  //image.input_memory->bytes_left = size - kPngHeaderSize;
   
-  // Reading.
-  png_read_info(png_handler.png_ptr, png_handler.info_ptr);
-
-  // reset error handler to put png_deleter into scope.
-  if (setjmp(png_jmpbuf(png_handler.png_ptr))) {
-    PNG_CLEANUP
-    return 0;
-  }
-
-  png_uint_32 width, height;
-  int bit_depth, color_type, interlace_type, compression_type;
-  int filter_type;
-
-  if (!png_get_IHDR(png_handler.png_ptr, png_handler.info_ptr, &width,
-                    &height, &bit_depth, &color_type, &interlace_type,
-                    &compression_type, &filter_type)) {
-    PNG_CLEANUP
-    return 0;
-  }
-
-  // This is going to be too slow.
-  if (width && height > 100000000 / width) {
-    PNG_CLEANUP
-    return 0;
-  }
-
-  png_read_update_info(png_handler.png_ptr, png_handler.info_ptr);
-
-  // Set several transforms that browsers typically use:
-  png_set_gray_to_rgb(png_handler.png_ptr);
-  png_set_expand(png_handler.png_ptr);
-  png_set_packing(png_handler.png_ptr);
-  png_set_scale_16(png_handler.png_ptr);
-  png_set_tRNS_to_alpha(png_handler.png_ptr);
-
-    // Add new transformation
+  memset(&image.image, 0, sizeof image.image);
+  image.image.version = PNG_IMAGE_VERSION;
   
-  // rgb to gray (done)
-  // red and green coefficient, use the default built in coefficients
-  // error action between 1 to 3
-  double red_to_set = 6968 / 32768.;
-  double green_to_set = 23434 / 32768.;
-  png_set_rgb_to_gray(png_handler.png_ptr, 1, red_to_set,green_to_set);
+  if (!png_image_begin_read_from_memory(&image.image, image.input_memory,
+      image.input_memory_size)){
 
-  // filler (done)
-  // the second argument is a filler color, u_int_32
-  // the third argument is either 0 or 1
- 
-  png_set_filler(png_handler.png_ptr, 0xffff, PNG_FILLER_AFTER);
-
-  // set alpha mode and set background conflicts with each other. 
-
-  // set alpha mode, trigger different mode (STANDARD, OPTIMIZED, BROKEN), and the compose transformation
-  // png_set_alpha_mode();
+      return 0;
+  }
   
-  // set background color, in the meantime, it calles the compose tranformation
-  png_color_16 back;
-  // use a default value
-  png_uint_16 default_red = 6968;
-  png_uint_16 default_green = 23434;
-  png_uint_16 default_blue = 2366;
-
-  back.red = default_red;
-  back.green = default_green;
-  back.blue = default_blue;
-  //back.gray = (png_uint_16)data.red;
-
-  png_set_background(png_handler.png_ptr, &back, PNG_BACKGROUND_GAMMA_FILE, 1, 1.0);
-  
-  int passes = png_set_interlace_handling(png_handler.png_ptr);
-
-
-  png_handler.row_ptr = png_malloc(
-      png_handler.png_ptr, png_get_rowbytes(png_handler.png_ptr,
-                                            png_handler.info_ptr));
-
-  for (int pass = 0; pass < passes; ++pass) {
-    for (png_uint_32 y = 0; y < height; ++y) {
-      png_read_row(png_handler.png_ptr,
-                   static_cast<png_bytep>(png_handler.row_ptr), nullptr);
+  png_bytep buffer;
+  if (size > 8000000)
+    {
+      return 0;
     }
+  else
+  { 
+  buffer = (unsigned char *) malloc(size);
   }
 
-  png_read_end(png_handler.png_ptr, png_handler.end_info_ptr);
+  if (buffer != NULL)
+  {
+    if (!png_image_finish_read(&image.image, NULL, buffer, 0, NULL))
+    {
+      return 0;
+    }
+    free(buffer);
 
-  PNG_CLEANUP
+  }
+  else
+  {
+    freeimage(&image);
+    
+    //png_image_free(&image);
+    return 0;
+  }
+  freeimage(&image);
+  free(buffer);
+  //png_image_free(&image);
   return 0;
 }
