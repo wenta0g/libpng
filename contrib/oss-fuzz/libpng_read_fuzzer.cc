@@ -107,7 +107,7 @@ void user_read_data(png_structp png_ptr, png_bytep data, size_t length) {
   buf_state->data += length;
 }
 
-void* limited_malloc(png_structp, png_alloc_size_t size) {
+void* limited_malloc(png_alloc_size_t size) {
   // libpng may allocate large amounts of memory that the fuzzer reports as
   // an error. In order to silence these errors, make libpng fail when trying
   // to allocate a large amount. This allocator used to be in the Chromium
@@ -138,28 +138,72 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     // not a PNG.
     return 0;
   }
-  Image image;
+  //Image image;
+  png_image image;
+  memset(&image, 0, sizeof image);
+  image.version = PNG_IMAGE_VERSION;
 
+  /*Read from file version*/
+  if (png_image_begin_read_from_memory(&image, data, size))
+  {
+    png_bytep buffer;
+//    image.format = PNG_FORMAT_RGBA;
+    buffer = (unsigned char *) limited_malloc(PNG_IMAGE_SIZE(image));
+    if (buffer != NULL)
+    {
+      if (png_image_finish_read(&image, NULL, buffer, 0, NULL))
+      {
+        printf("read success\n");
+        free(buffer);
+	png_image_free(&image);
+        return 0;
+      }
+      else
+      {
+        free(buffer);
+	png_image_free(&image);
+        return 0;
+      }
+    }
+    else
+    {
+	free(buffer);
+        png_image_free(&image);
+        return 0;
+    }
+
+  }
+  else
+  {
+    //printf("invalid filename\n");
+    png_image_free(&image);
+    return 0;
+  }
+/*
   //png_bytep b = data;
-  png_bytep b;
+  png_const_bytep b;
+  //png_bytep b;
   //image.input_memory = data;
-  image.input_memory_size = size;
+  //image.input_memory_size = size;
 
   // Setting up reading from buffer.
   memcpy(b, data, size);
-  image.input_memory = b;
+  //image.input_memory = b;
   //imge.input_memory = data + kPngHeaderSize;
   //image.input_memory->bytes_left = size - kPngHeaderSize;
   
-  memset(&image.image, 0, sizeof image.image);
-  image.image.version = PNG_IMAGE_VERSION;
+
+  memset(&image, 0, sizeof *image);
+
+  //memset(&image.image, 0, sizeof image.image);
+  image.version = PNG_IMAGE_VERSION;
   
-  if (!png_image_begin_read_from_memory(&image.image, image.input_memory,
-      image.input_memory_size)){
+  if (!png_image_begin_read_from_memory(&image, b,
+      size)){
 
       return 0;
   }
-  
+  image.format = PNG_FORMAT_RGB;
   png_bytep buffer;
   if (size > 8000000)
     {
@@ -167,12 +211,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     }
   else
   { 
-  buffer = (unsigned char *) malloc(size);
+  buffer = malloc(PNG_IMAGE_SIZE(image));
   }
 
   if (buffer != NULL)
   {
-    if (!png_image_finish_read(&image.image, NULL, buffer, 0, NULL))
+    if (!png_image_finish_read(&image, NULL, buffer, 0, NULL))
     {
       return 0;
     }
@@ -190,4 +234,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   free(buffer);
   //png_image_free(&image);
   return 0;
+*/
+
+  
 }
