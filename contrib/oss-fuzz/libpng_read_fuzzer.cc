@@ -153,7 +153,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     {
       if (png_image_finish_read(&image, NULL, buffer, 0, NULL))
       {
-        printf("read success\n");
+        //printf("read success\n");
         free(buffer);
 	png_image_free(&image);
         return 0;
