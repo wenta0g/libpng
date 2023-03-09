@@ -47,65 +47,53 @@ struct BufState {
   size_t bytes_left;
 };
 
-/* THE Image STRUCTURE */
-/* The super-class of a png_image, contains the decoded image plus the input
- * data necessary to re-read the file with a different format.
- */
-typedef struct
-{
-   png_image   image;
-   png_uint_32 opts;
-   png_voidp   input_memory;
-   size_t      input_memory_size;
-   png_bytep   buffer;
-   size_t      bufsize;
-   size_t      allocsize;
-   char        tmpfile_name[32];
-   png_uint_16 colormap[256*4];
-}
-Image;
 
-
-
-/* Initializer: also sets the permitted error limit for 16-bit operations. */
-static void
-newimage(Image *image)
-{
-   memset(image, 0, sizeof *image);
-}
-
-
-/* Delete function; cleans out all the allocated data and the temporary file in
- * the image.
+/* Generate random bytes.  This uses a boring repeatable algorithm and it
+ * is implemented here so that it gives the same set of numbers on every
+ * architecture.  It's a linear congruential generator (Knuth or Sedgewick
+ * "Algorithms") but it comes from the 'feedback taps' table in Horowitz and
+ * Hill, "The Art of Electronics" (Pseudo-Random Bit Sequences and Noise
+ * Generation.)
  */
 static void
-freeimage(Image *image)
+make_random_bytes(png_uint_32* seed, void* pv, size_t size)
 {
-   //freebuffer(image);
-   png_image_free(&image->image);
-   //free(image->buffer);
-   //image->buffer = NULL;
-   if (image->input_memory != NULL)
+   png_uint_32 u0 = seed[0], u1 = seed[1];
+   png_bytep bytes = (png_bytep) pv;
+
+   /* There are thirty three bits, the next bit in the sequence is bit-33 XOR
+    * bit-20.  The top 1 bit is in u1, the bottom 32 are in u0.
+    */
+   size_t i;
+   for (i=0; i<size; ++i)
    {
-      free(image->input_memory);
-      image->input_memory = NULL;
-      image->input_memory_size = 0;
+      /* First generate 8 new bits then shift them in at the end. */
+      png_uint_32 u = ((u0 >> (20-8)) ^ ((u1 << 7) | (u0 >> (32-7)))) & 0xff;
+      u1 <<= 8;
+      u1 |= u0 >> 24;
+      u0 <<= 8;
+      u0 |= u;
+      *bytes++ = (png_byte)u;
    }
 
+   seed[0] = u0;
+   seed[1] = u1;
 }
 
-
-
-
-void user_read_data(png_structp png_ptr, png_bytep data, size_t length) {
-  BufState* buf_state = static_cast<BufState*>(png_get_io_ptr(png_ptr));
-  if (length > buf_state->bytes_left) {
-    png_error(png_ptr, "read error");
-  }
-  memcpy(data, buf_state->data, length);
-  buf_state->bytes_left -= length;
-  buf_state->data += length;
+static void randomize(void *pv, size_t size)
+{
+   static png_uint_32 random_seed[2] = {0x56789abc, 0xd};
+   make_random_bytes(random_seed, pv, size);
 }
+
+static png_byte
+random_byte(void)
+{
+   unsigned char b1[1];
+   randomize(b1, sizeof b1);
+   return b1[0];
+}
+
 
 void* limited_malloc(png_alloc_size_t size) {
   // libpng may allocate large amounts of memory that the fuzzer reports as
@@ -119,9 +107,6 @@ void* limited_malloc(png_alloc_size_t size) {
   return malloc(size);
 }
 
-void default_free(png_structp, png_voidp ptr) {
-  return free(ptr);
-}
 
 static const int kPngHeaderSize = 8;
 
