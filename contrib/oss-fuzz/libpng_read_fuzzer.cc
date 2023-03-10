@@ -71,6 +71,42 @@ random_byte(void)
    return b1[0];
 }
 
+static png_uint_16
+random_u16(void)
+{
+   unsigned char b2[2];
+   randomize(b2, sizeof b2);
+   return png_get_uint_16(b2);
+}
+
+static unsigned int
+random_mod(unsigned int max)
+{
+   return random_u16() % max; /* 0 .. max-1 */
+}
+const uint8_t max = 19;
+static const uint8_t format_names[max]={
+  PNG_FORMAT_GRAY,
+  PNG_FORMAT_GA,
+  PNG_FORMAT_AG,
+  PNG_FORMAT_RGB,
+  PNG_FORMAT_BGR,
+  PNG_FORMAT_RGBA,
+  PNG_FORMAT_ARGB,
+  PNG_FORMAT_BGRA,
+  PNG_FORMAT_ABGR,
+  PNG_FORMAT_LINEAR_Y,
+  PNG_FORMAT_LINEAR_Y_ALPHA,
+  PNG_FORMAT_LINEAR_RGB,
+  PNG_FORMAT_LINEAR_RGB_ALPHA,
+  PNG_FORMAT_RGB_COLORMAP,
+  PNG_FORMAT_BGR_COLORMAP,
+  PNG_FORMAT_RGBA_COLORMAP,
+  PNG_FORMAT_ARGB_COLORMAP,
+  PNG_FORMAT_BGRA_COLORMAP,
+  PNG_FORMAT_ABGR_COLORMAP
+};
+
 
 
 void* limited_malloc(png_alloc_size_t size) {
@@ -110,7 +146,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     png_bytep buffer;
     /* random generate a image format,
      to trigger some transformations from the input file to the read buffer*/
-    image.format = (uint8_t) random_byte();
+    image.format = format_names[random_mod(max)];
     buffer = (unsigned char *) limited_malloc(PNG_IMAGE_SIZE(image));
     if (buffer != NULL)
     {
