@@ -132,7 +132,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   if (png_image_begin_read_from_memory(&image, data, size))
   {
     png_bytep buffer;
-//    image.format = PNG_FORMAT_RGBA;
+    image.format = PNG_FORMAT_GA;
     buffer = (unsigned char *) limited_malloc(PNG_IMAGE_SIZE(image));
     if (buffer != NULL)
     {
