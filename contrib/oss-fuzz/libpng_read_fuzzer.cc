@@ -24,66 +24,6 @@
 #include "png.h"
 
 
-/* Generate random bytes.  This uses a boring repeatable algorithm and it
- * is implemented here so that it gives the same set of numbers on every
- * architecture.  It's a linear congruential generator (Knuth or Sedgewick
- * "Algorithms") but it comes from the 'feedback taps' table in Horowitz and
- * Hill, "The Art of Electronics" (Pseudo-Random Bit Sequences and Noise
- * Generation.)
- */
-static void
-make_random_bytes(png_uint_32* seed, void* pv, size_t size)
-{
-   png_uint_32 u0 = seed[0], u1 = seed[1];
-   png_bytep bytes = (png_bytep) pv;
-
-   /* There are thirty three bits, the next bit in the sequence is bit-33 XOR
-    * bit-20.  The top 1 bit is in u1, the bottom 32 are in u0.
-    */
-   size_t i;
-   for (i=0; i<size; ++i)
-   {
-      /* First generate 8 new bits then shift them in at the end. */
-      png_uint_32 u = ((u0 >> (20-8)) ^ ((u1 << 7) | (u0 >> (32-7)))) & 0xff;
-      u1 <<= 8;
-      u1 |= u0 >> 24;
-      u0 <<= 8;
-      u0 |= u;
-      *bytes++ = (png_byte)u;
-   }
-
-   seed[0] = u0;
-   seed[1] = u1;
-}
-
-static void
-randomize(void *pv, size_t size)
-{
-   static png_uint_32 random_seed[2] = {0x56789abc, 0xd};
-   make_random_bytes(random_seed, pv, size);
-}
-
-static png_byte
-random_byte(void)
-{
-   unsigned char b1[1];
-   randomize(b1, sizeof b1);
-   return b1[0];
-}
-
-static png_uint_16
-random_u16(void)
-{
-   unsigned char b2[2];
-   randomize(b2, sizeof b2);
-   return png_get_uint_16(b2);
-}
-
-static unsigned int
-random_mod(unsigned int max)
-{
-   return random_u16() % max; /* 0 .. max-1 */
-}
 const uint8_t max = 19;
 static const uint8_t format_names[max]={
   PNG_FORMAT_GRAY,
@@ -144,12 +84,13 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   if (png_image_begin_read_from_memory(&image, data, size))
   {
     png_bytep buffer;
-    /* random generate a image format,
+    /*  Use the input file to generate an image format,
      to trigger some transformations from the input file to the read buffer*/
     const uint8_t* temp_data = data;
     if (size < kPngHeaderSize + 4){
       return 0;
     }
+	  
     if (size < 400)
     {
       image.format = PNG_FORMAT_RGB;//default
@@ -158,7 +99,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     {
       image.format = format_names[(*(temp_data + 400)) % max];
     }
-    //image.format = format_names[random_mod(max)];
+	  
     buffer = (unsigned char *) limited_malloc(PNG_IMAGE_SIZE(image));
     if (buffer != NULL)
     {
