@@ -146,6 +146,18 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     png_bytep buffer;
     /* random generate a image format,
      to trigger some transformations from the input file to the read buffer*/
+    const uint8_t* temp_data = data;
+    if (size < kPngHeaderSize + 4){
+      return 0;
+    }
+    if (size < 5000)
+    {
+      image.format = PNG_FORMAT_RGB;//default
+    }
+    else
+    {
+      image.format = format_names[(*(temp_data + 5000)) % max];
+    }
     image.format = format_names[random_mod(max)];
     buffer = (unsigned char *) limited_malloc(PNG_IMAGE_SIZE(image));
     if (buffer != NULL)
