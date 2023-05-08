@@ -91,7 +91,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       return 0;
     }
 	  
-    if (size < 400)
+    if (size <= 400)
     {
       image.format = PNG_FORMAT_RGB;//default
     }
